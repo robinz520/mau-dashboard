@@ -84,12 +84,19 @@ st.header('MAU Growth Over Time', divider='gray')
 
 ''
 
-st.line_chart(
-    filtered_mau_df,
-    x='Date',
-    y='MAU',
-    color='App Name',
+# 使用 Altair 图表替代 line_chart
+import altair as alt
+
+chart = alt.Chart(filtered_mau_df).mark_line().encode(
+    x='Date:T',
+    y='MAU:Q',
+    color='App Name:N'
+).properties(
+    width='container',
+    height=400
 )
+
+st.altair_chart(chart, use_container_width=True)
 
 ''
 ''
