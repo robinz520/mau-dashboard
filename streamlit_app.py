@@ -2,150 +2,124 @@ import streamlit as st
 import pandas as pd
 import math
 from pathlib import Path
+from datetime import datetime
 
 # Set the title and favicon that appear in the Browser's tab bar.
 st.set_page_config(
-    page_title='GDP dashboard',
-    page_icon=':earth_americas:', # This is an emoji shortcode. Could be a URL too.
+    page_title='RingCentral MAU Dashboard',
+    page_icon=':chart_with_upwards_trend:',
 )
 
 # -----------------------------------------------------------------------------
 # Declare some useful functions.
 
 @st.cache_data
-def get_gdp_data():
-    """Grab GDP data from a CSV file.
+def get_mau_data():
+    """Grab MAU data from a CSV file."""
+    
+    DATA_FILENAME = Path(__file__).parent/'mau_data.csv'
+    raw_mau_df = pd.read_csv(DATA_FILENAME)
+    
+    # 转换日期列
+    raw_mau_df['Date'] = pd.to_datetime(raw_mau_df['Date'])
+    
+    # 重命名列以匹配数据
+    raw_mau_df = raw_mau_df.rename(columns={
+        'unifiedAppName': 'App Name',
+        'May 20 2024, 12:00AM - May 15 2025, 7:09PM': 'MAU'
+    })
+    
+    return raw_mau_df
 
-    This uses caching to avoid having to read the file every time. If we were
-    reading from an HTTP endpoint instead of a file, it's a good idea to set
-    a maximum age to the cache with the TTL argument: @st.cache_data(ttl='1d')
-    """
-
-    # Instead of a CSV on disk, you could read from an HTTP endpoint here too.
-    DATA_FILENAME = Path(__file__).parent/'data/gdp_data.csv'
-    raw_gdp_df = pd.read_csv(DATA_FILENAME)
-
-    MIN_YEAR = 1960
-    MAX_YEAR = 2022
-
-    # The data above has columns like:
-    # - Country Name
-    # - Country Code
-    # - [Stuff I don't care about]
-    # - GDP for 1960
-    # - GDP for 1961
-    # - GDP for 1962
-    # - ...
-    # - GDP for 2022
-    #
-    # ...but I want this instead:
-    # - Country Name
-    # - Country Code
-    # - Year
-    # - GDP
-    #
-    # So let's pivot all those year-columns into two: Year and GDP
-    gdp_df = raw_gdp_df.melt(
-        ['Country Code'],
-        [str(x) for x in range(MIN_YEAR, MAX_YEAR + 1)],
-        'Year',
-        'GDP',
-    )
-
-    # Convert years from string to integers
-    gdp_df['Year'] = pd.to_numeric(gdp_df['Year'])
-
-    return gdp_df
-
-gdp_df = get_gdp_data()
+mau_df = get_mau_data()
 
 # -----------------------------------------------------------------------------
 # Draw the actual page
 
 # Set the title that appears at the top of the page.
 '''
-# :earth_americas: GDP dashboard
+# :chart_with_upwards_trend: RingCentral MAU Dashboard
 
-Browse GDP data from the [World Bank Open Data](https://data.worldbank.org/) website. As you'll
-notice, the data only goes to 2022 right now, and datapoints for certain years are often missing.
-But it's otherwise a great (and did I mention _free_?) source of data.
+Browse Monthly Active Users (MAU) data for RingCentral applications. This dashboard shows the growth and trends of active users over time.
 '''
 
 # Add some spacing
 ''
 ''
 
-min_value = gdp_df['Year'].min()
-max_value = gdp_df['Year'].max()
+# 获取日期范围
+min_date = mau_df['Date'].min().date()
+max_date = mau_df['Date'].max().date()
 
-from_year, to_year = st.slider(
-    'Which years are you interested in?',
-    min_value=min_value,
-    max_value=max_value,
-    value=[min_value, max_value])
+# 使用日期选择器替代滑块
+col1, col2 = st.columns(2)
+with col1:
+    from_date = st.date_input('Start date', min_date)
+with col2:
+    to_date = st.date_input('End date', max_date)
 
-countries = gdp_df['Country Code'].unique()
+# 获取所有应用名称
+apps = mau_df['App Name'].unique()
 
-if not len(countries):
-    st.warning("Select at least one country")
+if not len(apps):
+    st.warning("No applications found in the data")
 
-selected_countries = st.multiselect(
-    'Which countries would you like to view?',
-    countries,
-    ['DEU', 'FRA', 'GBR', 'BRA', 'MEX', 'JPN'])
+selected_apps = st.multiselect(
+    'Select applications to view',
+    apps,
+    ['RCAppDesktop', 'RCAppMobile', 'RCAppWeb', 'RingCentralForTeams'])  # 默认选择主要应用
 
 ''
 ''
 ''
 
 # Filter the data
-filtered_gdp_df = gdp_df[
-    (gdp_df['Country Code'].isin(selected_countries))
-    & (gdp_df['Year'] <= to_year)
-    & (from_year <= gdp_df['Year'])
+filtered_mau_df = mau_df[
+    (mau_df['App Name'].isin(selected_apps))
+    & (mau_df['Date'].dt.date <= to_date)
+    & (from_date <= mau_df['Date'].dt.date)
 ]
 
-st.header('GDP over time', divider='gray')
+st.header('MAU Growth Over Time', divider='gray')
 
 ''
 
 st.line_chart(
-    filtered_gdp_df,
-    x='Year',
-    y='GDP',
-    color='Country Code',
+    filtered_mau_df,
+    x='Date',
+    y='MAU',
+    color='App Name',
 )
 
 ''
 ''
 
+first_date = mau_df[mau_df['Date'].dt.date == from_date]
+last_date = mau_df[mau_df['Date'].dt.date == to_date]
 
-first_year = gdp_df[gdp_df['Year'] == from_year]
-last_year = gdp_df[gdp_df['Year'] == to_year]
-
-st.header(f'GDP in {to_year}', divider='gray')
+st.header(f'MAU Comparison ({from_date} vs {to_date})', divider='gray')
 
 ''
 
 cols = st.columns(4)
 
-for i, country in enumerate(selected_countries):
+for i, app in enumerate(selected_apps):
     col = cols[i % len(cols)]
 
     with col:
-        first_gdp = first_year[first_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-        last_gdp = last_year[last_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
+        first_mau = first_date[first_date['App Name'] == app]['MAU'].iat[0]
+        last_mau = last_date[last_date['App Name'] == app]['MAU'].iat[0]
 
-        if math.isnan(first_gdp):
+        if math.isnan(first_mau):
             growth = 'n/a'
             delta_color = 'off'
         else:
-            growth = f'{last_gdp / first_gdp:,.2f}x'
+            growth = f'{last_mau / first_mau:,.2f}x'
             delta_color = 'normal'
 
         st.metric(
-            label=f'{country} GDP',
-            value=f'{last_gdp:,.0f}B',
+            label=f'{app} MAU',
+            value=f'{last_mau:,.0f}',
             delta=growth,
             delta_color=delta_color
         )
